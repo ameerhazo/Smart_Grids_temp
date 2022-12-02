@@ -7,7 +7,7 @@
 #include <HTTPClient.h>
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
-#include <AsyncElegantOTA.h>;
+#include <AsyncElegantOTA.h>
 
 AsyncWebServer server(80);
 
