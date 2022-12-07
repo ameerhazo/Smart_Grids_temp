@@ -5,7 +5,7 @@
 
 
 //device indentifiers (change for every device)
-char device_ID[MSIZE] = "SUITE_019";                    // Change for every device
+char device_ID[MSIZE] = "M5_Test";                    // Change for every device
 
 //firmware info
 char firmwareVersion[MSIZE] = "2022-02-09";
