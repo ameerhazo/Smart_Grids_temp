@@ -13,21 +13,16 @@ AsyncWebServer server(80);
 
 //webportal
 bool checkbox_useconfig = false;
+String device_Name = "";
 String Serveraddress = "";
 String Mqttbrokeraddress = "";
 String Mqtt_auth_username = "";
 String Mqtt_auth_password = "";
-String Serveraddress_m = "";
-String Serveraddress_SML = "/sml";
-String Serveraddress_META = "/metadata";
-String Apikey = "";
-String Authorization = "";
-String Bearer = "Bearer ";
-bool checkbox_server = true;
-bool checkbox_apikey = false;
-bool checkbox_authorization = false;
-bool checkbox_meta = false;
-bool checkbox_use_mqtt = false;
-bool checkbox_mqtt_auth = false;
+
+bool use_custom_Name = false;
+bool checkbox_Gas = false;
+bool checkbox_Strom = false;
+bool checkbox_Wasser = false;
+
 
 #endif
