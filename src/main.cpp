@@ -7,30 +7,31 @@
 #include <ArduinoJson.h>
 #include "driver/pcnt.h"
 #include <M5StickCPlus.h>
+#include <WebThingAdapter.h>
 
 #define CONV_FACTOR 0.001
 #define M5_LOW 1
 #define M5_HIGH 0
 
-WiFiClient Client;
+// WiFiClient Client;
 
-PubSubClient MQTT_Client;
+// PubSubClient MQTT_Client;
 
-// MQTT sml topic string
-String mainTopic = "things/";
-// MQTT SUITE topic string
-String metadata_topic = String("things/" + String(device_ID));
-// MQTT SUITE lwt topic string
-String lwt_Topic = String(metadata_topic + "/lwt");
-// TD_topic
-String TD_topic;
+// // MQTT sml topic string
+// String mainTopic = "things/";
+// // MQTT SUITE topic string
+// String metadata_topic = String("things/" + String(device_ID));
+// // MQTT SUITE lwt topic string
+// String lwt_Topic = String(metadata_topic + "/lwt");
+// // TD_topic
+// String TD_topic;
 
-/*                   MQTT property topic example                    */
-// things/EHz_Server_ID/properties/property_name (SML data name)
-//
+// /*                   MQTT property topic example                    */
+// // things/EHz_Server_ID/properties/property_name (SML data name)
+// //
 
-// MQTT last will testament message
-String lwt_message = String("{ \"status\": \"offline\"}");
+// // MQTT last will testament message
+// String lwt_message = String("{ \"status\": \"offline\"}");
 
 // boolean to check for connected to broker
 bool connected_tobroker = false;
@@ -51,7 +52,7 @@ int impulse_pin = 13; // define interrupt pin to 2
 int impulse_counter = 0;
 volatile int state = LOW; // To make sure variables shared between an ISR
 
-void reconnect();
+// void reconnect();
 
 void test_button_press()
 {
@@ -250,15 +251,23 @@ void setup()
   String mqtt_brokerauth_user = WiFiSettings.string("MQTT Broker Username", "username");
   String mqtt_brokerauth_pass = WiFiSettings.string("MQTT Broker Password", "password");
 
-  // WiFiSettings.heading("Device mode");
-  // bool checkbox_Gas_dummy = WiFiSettings.checkbox("Gas", false);
-  // bool checkbox_Strom_dummy = WiFiSettings.checkbox("Strom", false);
-  // bool checkbox_Wasser_dummy = WiFiSettings.checkbox("Wasser", false);
+  WiFiSettings.heading("Device mode");
+  bool checkbox_Gas_dummy = WiFiSettings.checkbox("Gas", false);
+  bool checkbox_Strom_dummy = WiFiSettings.checkbox("Electricity", false);
+  bool checkbox_Wasser_dummy = WiFiSettings.checkbox("Water", false);
+  String meter_Number = WiFiSettings.string("Meter ID", "Meter-001");
 
-  WiFiSettings.heading("Gas Meter Configuration");
-  String meter_Number = WiFiSettings.string("Meter number", "Gas_Meter-001");
+  WiFiSettings.heading("Meter Configuration");
+  // String meter_Number = WiFiSettings.string("Meter number", "Gas_Meter-001");
   String meter_Reading = WiFiSettings.string("Meter reading", "12345.000");
-  // int meter_Reading = WiFiSettings.integer("Meter reading", );
+
+  // WiFiSettings.heading("Meter Configuration");
+  // // String meter_Number = WiFiSettings.string("Meter number", "Electricity_Meter-001");
+  // String meter_Reading = WiFiSettings.string("Meter reading", "12345.000");
+
+  // WiFiSettings.heading("Configuration");
+  // // String meter_Number = WiFiSettings.string("Meter number", "Gas_Meter-001");
+  // String meter_Reading = WiFiSettings.string("Meter reading", "12345.000");
 
   // reset connection counter
   connection_counter = 0;
@@ -275,12 +284,16 @@ void setup()
   M5.Lcd.println("CONNECTED");
   delay(1000);
 
-  //
+  // finished WiFi connection process
+  // set variables for configuration
   use_custom_Name = use_custom_name_Dummy;
   mqttbroker_Address = mqtt_brokeraddress_dummy;
   mqtt_needs_Auth = checkbox_mqtt_auth_dummy;
   mqttauth_Username = mqtt_brokerauth_user;
   mqttauth_Password = mqtt_brokerauth_pass;
+  checkbox_Gas = checkbox_Gas_dummy;
+  checkbox_Strom = checkbox_Strom_dummy;
+  checkbox_Wasser = checkbox_Wasser_dummy;
   current_meter_Reading = meter_Reading.toDouble();
 
   if (use_custom_Name)
@@ -331,11 +344,47 @@ void setup()
   M5.Lcd.fillScreen(BLACK);
   delay(500);
   M5.Lcd.setCursor(0, 55);
-  String IP_String = WiFi.localIP().toString();
-  M5.Lcd.printf("%s", IP_String.c_str());
+  // String IP_String = WiFi.localIP().toString();
+  // M5.Lcd.printf("%s", IP_String.c_str());
+  M5.Lcd.printf("RUNNING");
 
-  // get time
+  const char *multisensorProperties[] = {"multisensor", nullptr};
+  ThingDevice *multisensor = new ThingDevice("multisensor", "multisensor_thing", multisensorProperties);
 
+  if (checkbox_Gas)
+  {
+    ThingProperty *prop_Gas = new ThingProperty("Gas", "Gas usage measurement", NUMBER, nullptr, );
+    multisensor->addProperty(prop_Gas);
+  }
+
+  if (checkbox_Strom)
+  {
+    ThingProperty *prop_Strom = new ThingProperty("Electricity", "Electricity usage measurement", NUMBER, nullptr, );
+    multisensor->addProperty(prop_Strom);
+  }
+
+  if (checkbox_Wasser)
+  {
+    ThingProperty *prop_Wasser = new ThingProperty("test", "test", NUMBER, nullptr, );
+    multisensor->addProperty(prop_Wasser);
+  }
+
+  ThingProperty TVOC("tvocConcentration", "TVOC value of SGP30 sensor", NUMBER, nullptr, "AmbientAir", nullptr);
+  ThingProperty eCO2("co2Concentration", "co2 concentration value of SGP30 sensor", NUMBER, nullptr, "CarbonDioxideConcentration", nullptr);
+  ThingProperty temperature("temperature", "temperature value of BME680 sensor", NUMBER, nullptr, "TemperatureSensing", nullptr);
+  ThingProperty humidity("humidity", "humidity value of BME680 sensor", NUMBER, nullptr, "HumiditySensing", nullptr);
+  ThingProperty pressure("pressure", "pressure value of BME680 sensor", NUMBER, nullptr, "PressureSensing", nullptr);
+
+  // multisensor.addProperty(&TVOC);
+  // multisensor.addProperty(&eCO2);
+  multisensor->addProperty(&temperature);
+  multisensor->addProperty(&pressure);
+  multisensor->addProperty(&humidity);
+
+  mqttAdapter = new ThingMQTTAdapter("multisensor", "h2893034.stratoserver.net");
+  mqttAdapter->setmqttbroker_Credentials("user-ikt", "G%3bJ@wTt");
+  mqttAdapter->addDevice(multisensor);
+  mqttAdapter->begin();
   // start update-functionality
   AsyncElegantOTA.begin(&server);
   server.begin();
@@ -346,10 +395,10 @@ void loop()
   // put your main code here, to run repeatedly:
   // run update server
   // try to reconnect to the MQTT broker
-  reconnect();
+  // reconnect();
 
-  // perform background tasks for the communication using MQTT
-  MQTT_Client.loop();
+  // // perform background tasks for the communication using MQTT
+  // MQTT_Client.loop();
 
   M5.update();
   test_button_press();
@@ -360,29 +409,29 @@ void loop()
   // delay(50);
 }
 
-void reconnect()
-{
-  Serial.print("Attempting MQTT connection...");
+// void reconnect()
+// {
+//   Serial.print("Attempting MQTT connection...");
 
-  // Loop until we're reconnected
-  while (!MQTT_Client.connected())
-  {
-    int retries = 0;
+//   // Loop until we're reconnected
+//   while (!MQTT_Client.connected())
+//   {
+//     int retries = 0;
 
-    if (retries < 5)
-    {
-      
-      if (mqtt_needs_Auth)
-      {
-        connected_tobroker = MQTT_Client.connect(, mqttauth_Username.c_str(), mqttauth_Password.c_str(), lwt_Topic.c_str(), 1, true, lwt_message.c_str());
-      }
-      else
-      {
-        connected_tobroker = MQTT_Client.connect(device_ID, lwt_Topic.c_str(), 1, true, lwt_message.c_str());
-      }
+//     if (retries < 5)
+//     {
 
-      Serial.println("Retries exceeded, restarting device");
-      ESP.restart();
-    }
-  }
-}
+//       if (mqtt_needs_Auth)
+//       {
+//         connected_tobroker = MQTT_Client.connect(, mqttauth_Username.c_str(), mqttauth_Password.c_str(), lwt_Topic.c_str(), 1, true, lwt_message.c_str());
+//       }
+//       else
+//       {
+//         connected_tobroker = MQTT_Client.connect(device_ID, lwt_Topic.c_str(), 1, true, lwt_message.c_str());
+//       }
+
+//       Serial.println("Retries exceeded, restarting device");
+//       ESP.restart();
+//     }
+//   }
+// }
