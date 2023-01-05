@@ -23,6 +23,7 @@ DallasTemperature sensors(&oneWire);
 // WiFiClient Client;
 
 // PubSubClient MQTT_Client;
+<<<<<<< HEAD
 
 // // MQTT sml topic string
 // String mainTopic = "things/";
@@ -39,6 +40,27 @@ DallasTemperature sensors(&oneWire);
 
 // // MQTT last will testament message
 // String lwt_message = String("{ \"status\": \"offline\"}");
+=======
+
+// // MQTT sml topic string
+// String mainTopic = "things/";
+// // MQTT SUITE topic string
+// String metadata_topic = String("things/" + String(device_ID));
+// // MQTT SUITE lwt topic string
+// String lwt_Topic = String(metadata_topic + "/lwt");
+// // TD_topic
+// String TD_topic;
+
+// /*                   MQTT property topic example                    */
+// // things/EHz_Server_ID/properties/property_name (SML data name)
+// //
+
+// // MQTT last will testament message
+// String lwt_message = String("{ \"status\": \"offline\"}");
+
+void OneWireTask(void *pvParameters);
+
+>>>>>>> 189d4bfb4345f6dfbc4b3979ca40584307869aba
 
 // boolean to check for connected to broker
 bool connected_tobroker = false;
@@ -317,6 +339,7 @@ void setup()
   // String IP_String = WiFi.localIP().toString();
   // M5.Lcd.printf("%s", IP_String.c_str());
   M5.Lcd.printf("RUNNING");
+<<<<<<< HEAD
 
   const char *multisensorProperties[] = {"Smart_Meter", nullptr};
 
@@ -355,6 +378,46 @@ void setup()
   // ThingProperty humidity("humidity", "humidity value of BME680 sensor", NUMBER, nullptr, "HumiditySensing", nullptr);
   // ThingProperty pressure("pressure", "pressure value of BME680 sensor", NUMBER, nullptr, "PressureSensing", nullptr);
 
+=======
+
+  const char *multisensorProperties[] = {"Smart_Meter", nullptr};
+
+  if (use_custom_Name)
+  {
+    multisensor = new ThingDevice(device_Name.c_str(), "SmartMeter_Thing", multisensorProperties);
+  }
+  else
+  {
+    multisensor = new ThingDevice(device_ID, "SmartMeter_Thing", multisensorProperties);
+  }
+
+  if (checkbox_Gas)
+  {
+    // initialize DSB sensors here
+    sensors.begin();
+    prop_Gas = new ThingProperty("Gas", "Gas usage measurement", NUMBER, nullptr, nullptr, nullptr);
+    multisensor->addProperty(prop_Gas);
+  }
+
+  if (checkbox_Strom)
+  {
+    prop_Strom = new ThingProperty("Electricity", "Electricity usage measurement", NUMBER, nullptr, nullptr, nullptr);
+    multisensor->addProperty(prop_Strom);
+  }
+
+  if (checkbox_Wasser)
+  {
+    prop_Wasser = new ThingProperty("Water", "Water usage measurement", NUMBER, nullptr, nullptr, nullptr);
+    multisensor->addProperty(prop_Wasser);
+  }
+
+  // ThingProperty TVOC("tvocConcentration", "TVOC value of SGP30 sensor", NUMBER, nullptr, "AmbientAir", nullptr);
+  // ThingProperty eCO2("co2Concentration", "co2 concentration value of SGP30 sensor", NUMBER, nullptr, "CarbonDioxideConcentration", nullptr);
+  // ThingProperty temperature("temperature", "temperature value of BME680 sensor", NUMBER, nullptr, "TemperatureSensing", nullptr);
+  // ThingProperty humidity("humidity", "humidity value of BME680 sensor", NUMBER, nullptr, "HumiditySensing", nullptr);
+  // ThingProperty pressure("pressure", "pressure value of BME680 sensor", NUMBER, nullptr, "PressureSensing", nullptr);
+
+>>>>>>> 189d4bfb4345f6dfbc4b3979ca40584307869aba
   // multisensor.addProperty(&TVOC);
   // multisensor.addProperty(&eCO2);
   // multisensor->addProperty(&temperature);
@@ -372,11 +435,48 @@ void setup()
   mqttAdapter->addDevice(multisensor);
   mqttAdapter->begin();
   // start update-functionality
+
+  if(checkbox_Gas)
+  {
+    // start temperature sensor task
+  }
+
+  if(checkbox_Wasser)
+  {
+    // start some task for water
+  }
+
+  if(checkbox_Strom)
+  {
+    // start some task for electricity
+  }
+
+
   AsyncElegantOTA.begin(&server);
   server.begin();
+<<<<<<< HEAD
 
   
  
+=======
+ 
+}
+
+void OneWireTask(void *pvParameters)
+{
+  while (1)
+  {
+    sensors.requestTemperatures();
+    float temperatureC = sensors.getTempCByIndex(0);
+    float temperatureF = sensors.getTempFByIndex(0);
+    Serial.print(temperatureC);
+    Serial.println("ºC");
+    Serial.print(temperatureF);
+    Serial.println("ºF");
+
+    vTaskDelay();
+  }
+>>>>>>> 189d4bfb4345f6dfbc4b3979ca40584307869aba
 }
 
 void loop()
@@ -385,9 +485,17 @@ void loop()
   // run update server
   // try to reconnect to the MQTT broker
   // reconnect();
+<<<<<<< HEAD
 
   // // perform background tasks for the communication using MQTT
   // MQTT_Client.loop();
+=======
+
+  // // perform background tasks for the communication using MQTT
+  // MQTT_Client.loop();
+
+
+>>>>>>> 189d4bfb4345f6dfbc4b3979ca40584307869aba
 
   M5.update();
   test_button_press();
