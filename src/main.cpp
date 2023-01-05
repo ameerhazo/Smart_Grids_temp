@@ -1,17 +1,24 @@
-#include <Arduino.h>
+// #include <Arduino.h>
 #include "webportal.h"
 #include "timestamp.h"
 #include "deviceinfo.h"
 #include "filefunctions.h"
-#include "PubSubClient.h"
+// #include "PubSubClient.h"
 #include <ArduinoJson.h>
 #include "driver/pcnt.h"
 #include <M5StickCPlus.h>
 #include <WebThingAdapter.h>
+#include <OneWire.h>
+#include <DallasTemperature.h>
 
 #define CONV_FACTOR 0.001
 #define M5_LOW 1
 #define M5_HIGH 0
+
+
+const int oneWireBus = 4;
+OneWire oneWire(oneWireBus); // on pin 10 (a 4.7K resistor is necessary)
+DallasTemperature sensors(&oneWire);
 
 // WiFiClient Client;
 
@@ -54,55 +61,17 @@ volatile int state = LOW; // To make sure variables shared between an ISR
 
 // void reconnect();
 
+ThingProperty *prop_Gas;
+ThingProperty *prop_Strom;
+ThingProperty *prop_Wasser;
+ThingDevice *multisensor;
+
 void test_button_press()
 {
   if (M5.BtnA.pressedFor(3000))
   {
     WiFiSettings.portal();
   }
-  // if (digitalRead(red_Button) == LOW)
-  // {
-
-  //   if (buttonActive == false)
-  //   {
-
-  //     buttonActive = true;
-  //     buttonTimer = millis();
-  //   }
-
-  //   if ((millis() - buttonTimer > longPressTime) && (longPressActive == false))
-  //   {
-  //     if (paused)
-  //     {
-  //       longPressActive = true;
-  //       Serial.println("resume pressed!");
-  //       resume_pressed = true;
-  //       beep(2);
-  //     }
-  //   }
-  // }
-  // else
-  // {
-
-  //   if (buttonActive == true)
-  //   {
-
-  //     if (longPressActive == true)
-  //     {
-
-  //       longPressActive = false;
-  //     }
-  //     else
-  //     {
-
-  //       Serial.println("short pressed!");
-  //       pause_pressed = true;
-  //       beep(1);
-  //     }
-
-  //     buttonActive = false;
-  //   }
-  // }
 }
 
 void configure_LED(void)
@@ -287,6 +256,7 @@ void setup()
   // finished WiFi connection process
   // set variables for configuration
   use_custom_Name = use_custom_name_Dummy;
+  device_Name = custom_device_ID_Dummy;
   mqttbroker_Address = mqtt_brokeraddress_dummy;
   mqtt_needs_Auth = checkbox_mqtt_auth_dummy;
   mqttauth_Username = mqtt_brokerauth_user;
@@ -348,46 +318,65 @@ void setup()
   // M5.Lcd.printf("%s", IP_String.c_str());
   M5.Lcd.printf("RUNNING");
 
-  const char *multisensorProperties[] = {"multisensor", nullptr};
-  ThingDevice *multisensor = new ThingDevice("multisensor", "multisensor_thing", multisensorProperties);
+  const char *multisensorProperties[] = {"Smart_Meter", nullptr};
+
+  if (use_custom_Name)
+  {
+    multisensor = new ThingDevice(device_Name.c_str(), "SmartMeter_Thing", multisensorProperties);
+  }
+  else
+  {
+    multisensor = new ThingDevice(device_ID, "SmartMeter_Thing", multisensorProperties);
+  }
 
   if (checkbox_Gas)
   {
-    ThingProperty *prop_Gas = new ThingProperty("Gas", "Gas usage measurement", NUMBER, nullptr, );
+    // initialize DSB sensors here
+    sensors.begin();
+    prop_Gas = new ThingProperty("Gas", "Gas usage measurement", NUMBER, nullptr, nullptr, nullptr);
     multisensor->addProperty(prop_Gas);
   }
 
   if (checkbox_Strom)
   {
-    ThingProperty *prop_Strom = new ThingProperty("Electricity", "Electricity usage measurement", NUMBER, nullptr, );
+    prop_Strom = new ThingProperty("Electricity", "Electricity usage measurement", NUMBER, nullptr, nullptr, nullptr);
     multisensor->addProperty(prop_Strom);
   }
 
   if (checkbox_Wasser)
   {
-    ThingProperty *prop_Wasser = new ThingProperty("test", "test", NUMBER, nullptr, );
+    prop_Wasser = new ThingProperty("Water", "Water usage measurement", NUMBER, nullptr, nullptr, nullptr);
     multisensor->addProperty(prop_Wasser);
   }
 
-  ThingProperty TVOC("tvocConcentration", "TVOC value of SGP30 sensor", NUMBER, nullptr, "AmbientAir", nullptr);
-  ThingProperty eCO2("co2Concentration", "co2 concentration value of SGP30 sensor", NUMBER, nullptr, "CarbonDioxideConcentration", nullptr);
-  ThingProperty temperature("temperature", "temperature value of BME680 sensor", NUMBER, nullptr, "TemperatureSensing", nullptr);
-  ThingProperty humidity("humidity", "humidity value of BME680 sensor", NUMBER, nullptr, "HumiditySensing", nullptr);
-  ThingProperty pressure("pressure", "pressure value of BME680 sensor", NUMBER, nullptr, "PressureSensing", nullptr);
+  // ThingProperty TVOC("tvocConcentration", "TVOC value of SGP30 sensor", NUMBER, nullptr, "AmbientAir", nullptr);
+  // ThingProperty eCO2("co2Concentration", "co2 concentration value of SGP30 sensor", NUMBER, nullptr, "CarbonDioxideConcentration", nullptr);
+  // ThingProperty temperature("temperature", "temperature value of BME680 sensor", NUMBER, nullptr, "TemperatureSensing", nullptr);
+  // ThingProperty humidity("humidity", "humidity value of BME680 sensor", NUMBER, nullptr, "HumiditySensing", nullptr);
+  // ThingProperty pressure("pressure", "pressure value of BME680 sensor", NUMBER, nullptr, "PressureSensing", nullptr);
 
   // multisensor.addProperty(&TVOC);
   // multisensor.addProperty(&eCO2);
-  multisensor->addProperty(&temperature);
-  multisensor->addProperty(&pressure);
-  multisensor->addProperty(&humidity);
+  // multisensor->addProperty(&temperature);
+  // multisensor->addProperty(&pressure);
+  // multisensor->addProperty(&humidity);
 
-  mqttAdapter = new ThingMQTTAdapter("multisensor", "h2893034.stratoserver.net");
-  mqttAdapter->setmqttbroker_Credentials("user-ikt", "G%3bJ@wTt");
+  mqttAdapter = new ThingMQTTAdapter("Smart_Meter", mqttbroker_Address.c_str());
+
+  if (mqtt_needs_Auth)
+  {
+    Serial.println("MQTT Broker needs authentication");
+    mqttAdapter->setmqttbroker_Credentials(mqtt_brokerauth_user.c_str(), mqtt_brokerauth_pass.c_str());
+  }
+
   mqttAdapter->addDevice(multisensor);
   mqttAdapter->begin();
   // start update-functionality
   AsyncElegantOTA.begin(&server);
   server.begin();
+
+  
+ 
 }
 
 void loop()
@@ -435,3 +424,4 @@ void loop()
 //     }
 //   }
 // }
+
