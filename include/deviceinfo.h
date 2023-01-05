@@ -6,7 +6,6 @@
 
 //device indentifiers (change for every device)
 char device_ID[MSIZE] = "M5_Test";                    // Change for every device
-String default_device_ID = "";
 
 //firmware info
 char firmwareVersion[MSIZE] = "2022-02-09";
