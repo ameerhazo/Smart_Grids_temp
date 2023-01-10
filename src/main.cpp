@@ -3,13 +3,13 @@
 #include "timestamp.h"
 #include "deviceinfo.h"
 #include "filefunctions.h"
-// #include "PubSubClient.h"
 #include <ArduinoJson.h>
 #include "driver/pcnt.h"
 #include <M5StickCPlus.h>
 #include <WebThingAdapter.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <ArduinoNvs.h>
 
 /**
  * Impulse counter constants
@@ -34,6 +34,8 @@
  *   - will be reset to zero.
  */
 
+#define PCNT_H_LIM_VAL 1
+#define PCNT_L_LIM_VAL -10
 #define PCNT_INPUT_SIG_IO 26 // Pulse Input GPIO
 #define PCNT_INPUT_CTRL_IO 5 // Control GPIO HIGH=count up, LOW=count down
 #define LEDC_OUTPUT_IO 0     // Output GPIO of a sample 1 Hz pulse generator
@@ -51,6 +53,8 @@ DallasTemperature sensors(&oneWire);
 DeviceAddress insideThermometer, outsideThermometer;
 
 void OneWireTask(void *pvParameters);
+
+void UpdateMeterTask(void *pvParameters);
 
 // boolean to check for connected to broker
 bool connected_tobroker = false;
@@ -227,8 +231,8 @@ void configure_impulse_pin(void)
       .pos_mode = PCNT_COUNT_DIS, // Count up on the positive edge
       .neg_mode = PCNT_COUNT_INC, // Keep the counter value on the negative edge
       // Set the maximum and minimum limit values to watch
-      // .counter_h_lim = PCNT_H_LIM_VAL,
-      // .counter_l_lim = PCNT_L_LIM_VAL,
+      .counter_h_lim = PCNT_H_LIM_VAL,
+      .counter_l_lim = PCNT_L_LIM_VAL,
       .unit = PCNT_UNIT_0,
       .channel = PCNT_CHANNEL_0};
 
@@ -236,17 +240,13 @@ void configure_impulse_pin(void)
   pcnt_unit_config(&pcnt_config);
 
   /* Configure and enable the input filter */
-  pcnt_set_filter_value(PCNT_UNIT_0, 100);
+  pcnt_set_filter_value(PCNT_UNIT_0, 1023);
   pcnt_filter_enable(PCNT_UNIT_0);
 
-  /* Set threshold 0 and 1 values and enable events to watch */
-  // pcnt_set_event_value(PCNT_UNIT_0, PCNT_EVT_THRES_1, PCNT_THRESH1_VAL);
-  // pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_THRES_1);
-  // pcnt_set_event_value(PCNT_UNIT_0, PCNT_EVT_THRES_0, PCNT_THRESH0_VAL);
-  // pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_THRES_0);
+  
   /* Enable events on zero, maximum and minimum limit values */
   // pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_ZERO);
-  // pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_H_LIM);
+  pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_H_LIM);
   // pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_L_LIM);
 
   /* Initialize PCNT's counter */
@@ -301,85 +301,90 @@ void on_Failure(void)
   digitalWrite(red_LED, M5_HIGH);
 }
 
+// void update_Meter(void)
+// {
+//   Serial.println("Updating meter reading");
+//   // if (checkbox_Wärme)
+//   // {
+//   //   int16_t count = 0;
+//   //   pcnt_evt_t event;
+//   //   portBASE_TYPE res = xQueueReceive(pcnt_evt_queue, &event, pdMS_TO_TICKS(1000));
 
+//   //   if (res == pdTRUE) // counted up
+//   //   {
+//   //     pcnt_get_counter_value(PCNT_UNIT_0, &count);
 
-void update_Meter(void)
-{
+//   //     // calculate something
 
-  // if (checkbox_Wärme)
-  // {
-  //   int16_t count = 0;
-  //   pcnt_evt_t event;
-  //   portBASE_TYPE res = xQueueReceive(pcnt_evt_queue, &event, pdMS_TO_TICKS(1000));
+//   //     // TODO: check how this is
+//   //     current_meter_Reading = current_meter_Reading + 1;
 
-  //   if (res == pdTRUE) // counted up
-  //   {
-  //     pcnt_get_counter_value(PCNT_UNIT_0, &count);
+//   //     ThingPropertyValue temp_new_value;
+//   //     temp_new_value.number = current_meter_Reading;
+//   //     prop_Wasser->setValue(temp_new_value);
+//   //     prop_Wasser->hasChanged();
+//   //   }
+//   // }
 
-  //     // calculate something
+//   if (checkbox_Gas) // Wärme
+//   {
+//     int16_t count = 0;
+//     pcnt_evt_t event;
+//     portBASE_TYPE res = xQueueReceive(pcnt_evt_queue, &event, pdMS_TO_TICKS(1000));
 
-  //     // TODO: check how this is
-  //     current_meter_Reading = current_meter_Reading + 1;
+//     if (res == pdTRUE) // counted up
+//     {
+//       pcnt_get_counter_value(PCNT_UNIT_0, &count);
 
-  //     ThingPropertyValue temp_new_value;
-  //     temp_new_value.number = current_meter_Reading;
-  //     prop_Wasser->setValue(temp_new_value);
-  //     prop_Wasser->hasChanged();
-  //   }
-  // }
+//       // save counter value in NVS
+//       // bool res = NVS.setInt("GMC", count, true);
 
-  if (checkbox_Gas) // Wärme
-  {
-    int16_t count = 0;
-    pcnt_evt_t event;
-    portBASE_TYPE res = xQueueReceive(pcnt_evt_queue, &event, pdMS_TO_TICKS(1000));
+//       // calculate something
 
-    if (res == pdTRUE) // counted up
-    {
-      pcnt_get_counter_value(PCNT_UNIT_0, &count);
+//       // TODO: check how this is
+//       current_meter_Reading = current_meter_Reading + 1.0;
+//       ThingPropertyValue temp_new_value;
+//       temp_new_value.number = current_meter_Reading;
+//       prop_Gas->setValue(temp_new_value);
+//       prop_Gas->hasChanged();
+//     }
+//   }
 
-      // calculate something
+//   if (checkbox_Strom) // TODO: add SML here maybe?
+//   {
+//   }
 
-      // TODO: check how this is
-      current_meter_Reading = current_meter_Reading + 1.0;
+//   if (checkbox_Wasser)
+//   {
+//     int16_t count = 0;
+//     pcnt_evt_t event;
+//     portBASE_TYPE res;
+//     res = xQueueReceive(pcnt_evt_queue, &event, pdMS_TO_TICKS(1000));
 
-      ThingPropertyValue temp_new_value;
-      temp_new_value.number = current_meter_Reading;
-      prop_Gas->setValue(temp_new_value);
-      prop_Gas->hasChanged();
-    }
-  }
+//     if (res == pdTRUE) // counted up
+//     {
+//       pcnt_get_counter_value(PCNT_UNIT_0, &count);
 
-  if (checkbox_Strom) // add SML here maybe?
-  {
-  }
+//       // save counter value in NVS
+//       // bool res = NVS.setInt("WMC", count, true);
 
-  if (checkbox_Wasser)
-  {
-    int16_t count = 0;
-    pcnt_evt_t event;
-    portBASE_TYPE res = xQueueReceive(pcnt_evt_queue, &event, pdMS_TO_TICKS(1000));
+//       // calculate something
 
-    if (res == pdTRUE) // counted up
-    {
-      pcnt_get_counter_value(PCNT_UNIT_0, &count);
+//       // TODO: check how this is
+//       current_meter_Reading = current_meter_Reading + 1.0;
+//       Serial.println(current_meter_Reading);
 
-      // calculate something
-
-      // TODO: check how this is
-      current_meter_Reading = current_meter_Reading + 1.0;
-
-      ThingPropertyValue temp_new_value;
-      temp_new_value.number = current_meter_Reading;
-      prop_Wasser->setValue(temp_new_value);
-      prop_Wasser->hasChanged();
-    }
-    // else // for debug
-    // {
-    //   pcnt_get_counter_value(PCNT_UNIT_0, &count);
-    // }
-  }
-}
+//       ThingPropertyValue temp_new_value;
+//       temp_new_value.number = current_meter_Reading;
+//       prop_Wasser->setValue(temp_new_value);
+//       prop_Wasser->hasChanged();
+//     }
+//     else // for debug
+//     {
+//       pcnt_get_counter_value(PCNT_UNIT_0, &count);
+//     }
+//   }
+// }
 
 void setup()
 {
@@ -406,8 +411,8 @@ void setup()
   configure_LED();
   // start SPIFFS
   SPIFFS.begin(true);
-
-  // configure_impulse_pin();
+  // initialize NVS flash
+  // NVS.begin();
 
   WiFiSettings.onWaitLoop = []()
   {
@@ -604,18 +609,6 @@ void setup()
     multisensor->addProperty(prop_Wasser);
   }
 
-  // ThingProperty TVOC("tvocConcentration", "TVOC value of SGP30 sensor", NUMBER, nullptr, "AmbientAir", nullptr);
-  // ThingProperty eCO2("co2Concentration", "co2 concentration value of SGP30 sensor", NUMBER, nullptr, "CarbonDioxideConcentration", nullptr);
-  // ThingProperty temperature("temperature", "temperature value of BME680 sensor", NUMBER, nullptr, "TemperatureSensing", nullptr);
-  // ThingProperty humidity("humidity", "humidity value of BME680 sensor", NUMBER, nullptr, "HumiditySensing", nullptr);
-  // ThingProperty pressure("pressure", "pressure value of BME680 sensor", NUMBER, nullptr, "PressureSensing", nullptr);
-
-  // multisensor.addProperty(&TVOC);
-  // multisensor.addProperty(&eCO2);
-  // multisensor->addProperty(&temperature);
-  // multisensor->addProperty(&pressure);
-  // multisensor->addProperty(&humidity);
-
   mqttAdapter = new ThingMQTTAdapter("Smart_Meter", mqttbroker_Address.c_str());
 
   if (mqtt_needs_Auth)
@@ -637,6 +630,7 @@ void setup()
   if (checkbox_Wasser)
   {
     // start some task for water
+    xTaskCreatePinnedToCore(UpdateMeterTask, "UpdateMeterTask", 8000, NULL, 5, NULL, 1);
   }
 
   if (checkbox_Strom)
@@ -660,7 +654,7 @@ void loop()
   M5.update();
   test_button_press();
   connected_AP();
-  update_Meter();
+  // update_Meter();
   AsyncElegantOTA.loop();
 
   // Serial.printf("counter = %d\n", impulse_counter);
@@ -668,6 +662,98 @@ void loop()
   // current_meter_Reading = current_meter_Reading + 1.0;
   // Serial.println(current_meter_Reading);
   // delay(1000);
+}
+
+void UpdateMeterTask(void *pvParameters)
+{
+  while (1)
+  {
+    // Serial.println("Updating meter reading");
+    // if (checkbox_Wärme)
+    // {
+    //   int16_t count = 0;
+    //   pcnt_evt_t event;
+    //   portBASE_TYPE res = xQueueReceive(pcnt_evt_queue, &event, pdMS_TO_TICKS(1000));
+
+    //   if (res == pdTRUE) // counted up
+    //   {
+    //     pcnt_get_counter_value(PCNT_UNIT_0, &count);
+
+    //     // calculate something
+
+    //     // TODO: check how this is
+    //     current_meter_Reading = current_meter_Reading + 1;
+
+    //     ThingPropertyValue temp_new_value;
+    //     temp_new_value.number = current_meter_Reading;
+    //     prop_Wasser->setValue(temp_new_value);
+    //     prop_Wasser->hasChanged();
+    //   }
+    // }
+
+    if (checkbox_Gas) // Wärme
+    {
+      int16_t count = 0;
+      pcnt_evt_t event;
+      portBASE_TYPE res = xQueueReceive(pcnt_evt_queue, &event, pdMS_TO_TICKS(1000));
+
+      if (res == pdTRUE) // counted up
+      {
+        pcnt_get_counter_value(PCNT_UNIT_0, &count);
+
+        // save counter value in NVS
+        // bool res = NVS.setInt("GMC", count, true);
+
+        // calculate something
+
+        // TODO: check how this is
+        current_meter_Reading = current_meter_Reading + 1.0;
+        ThingPropertyValue temp_new_value;
+        temp_new_value.number = current_meter_Reading;
+        prop_Gas->setValue(temp_new_value);
+        prop_Gas->hasChanged();
+      }
+    }
+
+    if (checkbox_Strom) // TODO: add SML here maybe?
+    {
+    }
+
+    if (checkbox_Wasser)
+    {
+      int16_t count = 0;
+      pcnt_evt_t event;
+      portBASE_TYPE res;
+      res = xQueueReceive(pcnt_evt_queue, &event, pdMS_TO_TICKS(1000));
+
+      if (res == pdTRUE) // counted up
+      {
+        pcnt_get_counter_value(PCNT_UNIT_0, &count);
+
+        Serial.printf("Event PCNT unit[%d]; cnt: %d", event.unit, count);
+
+        // save counter value in NVS
+        // bool res = NVS.setInt("WMC", count, true);
+
+        // calculate something
+
+        // TODO: check how this is
+        current_meter_Reading = current_meter_Reading + 1.0;
+        Serial.println(current_meter_Reading);
+
+        ThingPropertyValue temp_new_value;
+        temp_new_value.number = current_meter_Reading;
+        prop_Wasser->setValue(temp_new_value);
+        prop_Wasser->hasChanged();
+      }
+      else // for debug
+      {
+        pcnt_get_counter_value(PCNT_UNIT_0, &count);
+      }
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  }
 }
 
 void OneWireTask(void *pvParameters)
@@ -694,8 +780,6 @@ void OneWireTask(void *pvParameters)
 }
 
 // function to print a device address
-
-
 
 // void reconnect()
 // {
