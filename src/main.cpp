@@ -33,10 +33,7 @@
  *   - reaches 'l_lim' value or 'h_lim' value,
  *   - will be reset to zero.
  */
-#define PCNT_H_LIM_VAL 10
-#define PCNT_L_LIM_VAL -10
-#define PCNT_THRESH1_VAL 5
-#define PCNT_THRESH0_VAL -5
+
 #define PCNT_INPUT_SIG_IO 26 // Pulse Input GPIO
 #define PCNT_INPUT_CTRL_IO 5 // Control GPIO HIGH=count up, LOW=count down
 #define LEDC_OUTPUT_IO 0     // Output GPIO of a sample 1 Hz pulse generator
@@ -123,6 +120,50 @@ void configure_LED(void)
   fadeDownStartTime = millis();
 }
 
+// function to print the temperature for a device
+void printTemperature(DeviceAddress deviceAddress)
+{
+  float tempC = sensors.getTempC(deviceAddress);
+  if (tempC == DEVICE_DISCONNECTED_C)
+  {
+    Serial.println("Error: Could not read temperature data");
+    return;
+  }
+  Serial.print("Temp C: ");
+  Serial.print(tempC);
+  Serial.print(" Temp F: ");
+  Serial.print(DallasTemperature::toFahrenheit(tempC));
+}
+
+// function to print a device's resolution
+void printResolution(DeviceAddress deviceAddress)
+{
+  Serial.print("Resolution: ");
+  Serial.print(sensors.getResolution(deviceAddress));
+  Serial.println();
+}
+
+void printAddress(DeviceAddress deviceAddress)
+{
+  for (uint8_t i = 0; i < 8; i++)
+  {
+    // zero pad the address if necessary
+    if (deviceAddress[i] < 16)
+      Serial.print("0");
+    Serial.print(deviceAddress[i], HEX);
+  }
+}
+
+// main function to print information about a device
+void printData(DeviceAddress deviceAddress)
+{
+  Serial.print("Device Address: ");
+  printAddress(deviceAddress);
+  Serial.print(" ");
+  printTemperature(deviceAddress);
+  Serial.println();
+}
+
 void configure_temperature_sensors(void)
 {
   // initialize DSB sensors here
@@ -186,8 +227,8 @@ void configure_impulse_pin(void)
       .pos_mode = PCNT_COUNT_DIS, // Count up on the positive edge
       .neg_mode = PCNT_COUNT_INC, // Keep the counter value on the negative edge
       // Set the maximum and minimum limit values to watch
-      .counter_h_lim = PCNT_H_LIM_VAL,
-      .counter_l_lim = PCNT_L_LIM_VAL,
+      // .counter_h_lim = PCNT_H_LIM_VAL,
+      // .counter_l_lim = PCNT_L_LIM_VAL,
       .unit = PCNT_UNIT_0,
       .channel = PCNT_CHANNEL_0};
 
@@ -199,14 +240,14 @@ void configure_impulse_pin(void)
   pcnt_filter_enable(PCNT_UNIT_0);
 
   /* Set threshold 0 and 1 values and enable events to watch */
-  pcnt_set_event_value(PCNT_UNIT_0, PCNT_EVT_THRES_1, PCNT_THRESH1_VAL);
-  pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_THRES_1);
-  pcnt_set_event_value(PCNT_UNIT_0, PCNT_EVT_THRES_0, PCNT_THRESH0_VAL);
-  pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_THRES_0);
+  // pcnt_set_event_value(PCNT_UNIT_0, PCNT_EVT_THRES_1, PCNT_THRESH1_VAL);
+  // pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_THRES_1);
+  // pcnt_set_event_value(PCNT_UNIT_0, PCNT_EVT_THRES_0, PCNT_THRESH0_VAL);
+  // pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_THRES_0);
   /* Enable events on zero, maximum and minimum limit values */
-  pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_ZERO);
-  pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_H_LIM);
-  pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_L_LIM);
+  // pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_ZERO);
+  // pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_H_LIM);
+  // pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_L_LIM);
 
   /* Initialize PCNT's counter */
   pcnt_counter_pause(PCNT_UNIT_0);
@@ -260,16 +301,7 @@ void on_Failure(void)
   digitalWrite(red_LED, M5_HIGH);
 }
 
-void printAddress(DeviceAddress deviceAddress)
-{
-  for (uint8_t i = 0; i < 8; i++)
-  {
-    // zero pad the address if necessary
-    if (deviceAddress[i] < 16)
-      Serial.print("0");
-    Serial.print(deviceAddress[i], HEX);
-  }
-}
+
 
 void update_Meter(void)
 {
@@ -663,38 +695,7 @@ void OneWireTask(void *pvParameters)
 
 // function to print a device address
 
-// function to print the temperature for a device
-void printTemperature(DeviceAddress deviceAddress)
-{
-  float tempC = sensors.getTempC(deviceAddress);
-  if (tempC == DEVICE_DISCONNECTED_C)
-  {
-    Serial.println("Error: Could not read temperature data");
-    return;
-  }
-  Serial.print("Temp C: ");
-  Serial.print(tempC);
-  Serial.print(" Temp F: ");
-  Serial.print(DallasTemperature::toFahrenheit(tempC));
-}
 
-// function to print a device's resolution
-void printResolution(DeviceAddress deviceAddress)
-{
-  Serial.print("Resolution: ");
-  Serial.print(sensors.getResolution(deviceAddress));
-  Serial.println();
-}
-
-// main function to print information about a device
-void printData(DeviceAddress deviceAddress)
-{
-  Serial.print("Device Address: ");
-  printAddress(deviceAddress);
-  Serial.print(" ");
-  printTemperature(deviceAddress);
-  Serial.println();
-}
 
 // void reconnect()
 // {
