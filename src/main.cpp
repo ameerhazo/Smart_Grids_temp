@@ -33,12 +33,10 @@
  *   - reaches 'l_lim' value or 'h_lim' value,
  *   - will be reset to zero.
  */
-
 #define PCNT_H_LIM_VAL 1
 #define PCNT_L_LIM_VAL -10
 #define PCNT_INPUT_SIG_IO 26 // Pulse Input GPIO
 #define PCNT_INPUT_CTRL_IO 5 // Control GPIO HIGH=count up, LOW=count down
-#define LEDC_OUTPUT_IO 0     // Output GPIO of a sample 1 Hz pulse generator
 
 // Temperature sensor constants
 #define CONV_FACTOR 0.001
@@ -46,11 +44,15 @@
 #define M5_HIGH 0
 #define TEMPERATURE_PRECISION 9
 
-const int oneWireBus = 26;
+// Waermezaehler constants
+#define WAERMEKAPAZITAET_WASSER_J 4.2 // kJ//(kg.K)
+#define WAERMEKAPAZITAET_WASSER_W 1.163
+
+const int oneWireBus = 25;
 OneWire oneWire(oneWireBus); // on pin 10 (a 4.7K resistor is necessary)
 DallasTemperature sensors(&oneWire);
 
-DeviceAddress insideThermometer, outsideThermometer;
+DeviceAddress temperatur_Vorlauf, temperatur_Ruecklauf;
 
 void OneWireTask(void *pvParameters);
 
@@ -71,9 +73,8 @@ bool longPressActive = false;
 int connection_counter = 0;
 int red_LED = 10;
 
-int impulse_pin = 13; // define interrupt pin to 2
-int impulse_counter = 0;
-volatile int state = LOW; // To make sure variables shared between an ISR
+int counter_value = 0;
+time_t time_last_impulse;
 
 // void reconnect();
 
@@ -177,9 +178,9 @@ void configure_temperature_sensors(void)
   Serial.print(sensors.getDeviceCount(), DEC);
   Serial.println(" devices.");
 
-  if (!sensors.getAddress(insideThermometer, 0))
+  if (!sensors.getAddress(temperatur_Vorlauf, 0))
     Serial.println("Unable to find address for Device 0");
-  if (!sensors.getAddress(outsideThermometer, 1))
+  if (!sensors.getAddress(temperatur_Ruecklauf, 1))
     Serial.println("Unable to find address for Device 1");
 
   Serial.print("Parasite power is: ");
@@ -188,29 +189,24 @@ void configure_temperature_sensors(void)
   else
     Serial.println("OFF");
 
-  if (!sensors.getAddress(insideThermometer, 0))
-    Serial.println("Unable to find address for Device 0");
-  if (!sensors.getAddress(outsideThermometer, 1))
-    Serial.println("Unable to find address for Device 1");
-
   Serial.print("Device 0 Address: ");
-  printAddress(insideThermometer);
+  printAddress(temperatur_Vorlauf);
   Serial.println();
 
   Serial.print("Device 1 Address: ");
-  printAddress(outsideThermometer);
+  printAddress(temperatur_Ruecklauf);
   Serial.println();
 
   // set the resolution to 9 bit per device
-  sensors.setResolution(insideThermometer, TEMPERATURE_PRECISION);
-  sensors.setResolution(outsideThermometer, TEMPERATURE_PRECISION);
+  sensors.setResolution(temperatur_Vorlauf, TEMPERATURE_PRECISION);
+  sensors.setResolution(temperatur_Ruecklauf, TEMPERATURE_PRECISION);
 
   Serial.print("Device 0 Resolution: ");
-  Serial.print(sensors.getResolution(insideThermometer), DEC);
+  Serial.print(sensors.getResolution(temperatur_Vorlauf), DEC);
   Serial.println();
 
   Serial.print("Device 1 Resolution: ");
-  Serial.print(sensors.getResolution(outsideThermometer), DEC);
+  Serial.print(sensors.getResolution(temperatur_Ruecklauf), DEC);
   Serial.println();
 }
 
@@ -243,7 +239,6 @@ void configure_impulse_pin(void)
   pcnt_set_filter_value(PCNT_UNIT_0, 1023);
   pcnt_filter_enable(PCNT_UNIT_0);
 
-  
   /* Enable events on zero, maximum and minimum limit values */
   // pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_ZERO);
   pcnt_event_enable(PCNT_UNIT_0, PCNT_EVT_H_LIM);
@@ -414,6 +409,15 @@ void setup()
   // initialize NVS flash
   // NVS.begin();
 
+  // test functions
+  // configure_temperature_sensors();
+
+  // configure_impulse_pin();
+
+  M5.Lcd.fillScreen(BLACK);
+  M5.Lcd.setCursor(0, 55);
+  M5.Lcd.printf("counter: %d", counter_value);
+
   WiFiSettings.onWaitLoop = []()
   {
     bool led_Status = digitalRead(red_LED);
@@ -546,13 +550,23 @@ void setup()
   M5.Lcd.println("SUCCESS");
   delay(1000);
 
-  if (mqttbroker_Address != "")
+  if (dev_uses_MQTT)
   {
-  }
-  else
-  {
-    Serial.println("User forgot to set MQTT broker address, restarting portal");
-    WiFiSettings.portal();
+    if (mqttbroker_Address != "")
+    {
+      mqttAdapter = new ThingMQTTAdapter("Smart_Meter", mqttbroker_Address);
+    }
+    else
+    {
+      Serial.println("User forgot to set MQTT broker address, restarting portal");
+      WiFiSettings.portal();
+    }
+
+    if (mqtt_needs_Auth)
+    {
+      Serial.println("MQTT Broker needs authentication");
+      mqttAdapter->setmqttbroker_Credentials(mqtt_brokerauth_user.c_str(), mqtt_brokerauth_pass.c_str());
+    }
   }
 
   M5.Lcd.fillScreen(WHITE);
@@ -609,22 +623,17 @@ void setup()
     multisensor->addProperty(prop_Wasser);
   }
 
-  mqttAdapter = new ThingMQTTAdapter("Smart_Meter", mqttbroker_Address.c_str());
-
-  if (mqtt_needs_Auth)
-  {
-    Serial.println("MQTT Broker needs authentication");
-    mqttAdapter->setmqttbroker_Credentials(mqtt_brokerauth_user.c_str(), mqtt_brokerauth_pass.c_str());
-  }
-
   mqttAdapter->addDevice(multisensor);
   mqttAdapter->begin();
   // start update-functionality
 
+  delay(2000);
+
   if (checkbox_Gas)
   {
     // start temperature sensor task
-    xTaskCreatePinnedToCore(OneWireTask, "OneWireTask", 8000, NULL, 5, NULL, 1);
+    // xTaskCreatePinnedToCore(OneWireTask, "OneWireTask", 8000, NULL, 5, NULL, 1);
+    xTaskCreatePinnedToCore(UpdateMeterTask, "UpdateMeterTask", 8000, NULL, 5, NULL, 1);
   }
 
   if (checkbox_Wasser)
@@ -644,74 +653,102 @@ void setup()
 
 void loop()
 {
-  // put your main code here, to run repeatedly:
-  // run update server
-  // try to reconnect to the MQTT broker
-  // reconnect();
-
-  // perform background tasks for the communication using MQTT
-  // MQTT_Client.loop();
+  // // perform background tasks for the communication using MQTT
   M5.update();
   test_button_press();
   connected_AP();
-  // update_Meter();
   AsyncElegantOTA.loop();
 
-  // Serial.printf("counter = %d\n", impulse_counter);
-  // Serial.println(digitalRead(impulse_pin));
-  // current_meter_Reading = current_meter_Reading + 1.0;
-  // Serial.println(current_meter_Reading);
-  // delay(1000);
+  // Serial.print("Requesting temperatures...");
+  // sensors.requestTemperatures();
+  // Serial.println("DONE");
+
+  // float temp_Vorlauf = sensors.getTempC(temperatur_Vorlauf);
+  // float temp_Ruecklauf = sensors.getTempC(temperatur_Ruecklauf);
+  // if (temp_Vorlauf == DEVICE_DISCONNECTED_C)
+  // {
+  //   Serial.println("Error: Could not read Vorlauf temperature data");
+  // }
+
+  // if (temp_Ruecklauf == DEVICE_DISCONNECTED_C)
+  // {
+  //   Serial.println("Error: Could not read Ruecklauf temperature data");
+  // }
+
+  // Serial.print("Vorlauftemperatur C: ");
+  // Serial.print(temp_Vorlauf);
+  // Serial.print("Ruecklauftemperatur C: ");
+  // Serial.print(temp_Ruecklauf);
 }
 
 void UpdateMeterTask(void *pvParameters)
 {
   while (1)
   {
-    // Serial.println("Updating meter reading");
-    // if (checkbox_Wärme)
-    // {
-    //   int16_t count = 0;
-    //   pcnt_evt_t event;
-    //   portBASE_TYPE res = xQueueReceive(pcnt_evt_queue, &event, pdMS_TO_TICKS(1000));
-
-    //   if (res == pdTRUE) // counted up
-    //   {
-    //     pcnt_get_counter_value(PCNT_UNIT_0, &count);
-
-    //     // calculate something
-
-    //     // TODO: check how this is
-    //     current_meter_Reading = current_meter_Reading + 1;
-
-    //     ThingPropertyValue temp_new_value;
-    //     temp_new_value.number = current_meter_Reading;
-    //     prop_Wasser->setValue(temp_new_value);
-    //     prop_Wasser->hasChanged();
-    //   }
-    // }
-
     if (checkbox_Gas) // Wärme
     {
       int16_t count = 0;
       pcnt_evt_t event;
-      portBASE_TYPE res = xQueueReceive(pcnt_evt_queue, &event, pdMS_TO_TICKS(1000));
+      portBASE_TYPE res;
+      long time_delta;
+      res = xQueueReceive(pcnt_evt_queue, &event, pdMS_TO_TICKS(1000));
 
-      if (res == pdTRUE) // counted up
+      if (res == pdTRUE)
       {
-        pcnt_get_counter_value(PCNT_UNIT_0, &count);
+        if (event.status & PCNT_EVT_H_LIM)
+        {
+          Serial.println("Impulse detected, 100L water used");
+          if (counter_value == 0)
+          {
+            Serial.println("First impulse detected doesnt count");
+            time(&time_last_impulse);
+          }
+          else
+          {
+            counter_value = counter_value + 1;
 
-        // save counter value in NVS
-        // bool res = NVS.setInt("GMC", count, true);
+            // save counter value in NVS
 
-        // calculate something
+            // calculate the time difference between impulses
+            time_t time_current_impulse;
+            time(&time_current_impulse);
 
-        // TODO: check how this is
-        current_meter_Reading = current_meter_Reading + 1.0;
-        ThingPropertyValue temp_new_value;
-        temp_new_value.number = current_meter_Reading;
-        prop_Gas->setValue(temp_new_value);
-        prop_Gas->hasChanged();
+            time_delta = (long)time_current_impulse - long(time_last_impulse);
+
+            Serial.print("Requesting temperatures...");
+            sensors.requestTemperatures();
+            Serial.println("DONE");
+
+            float temp_Vorlauf = sensors.getTempC(temperatur_Vorlauf);
+            float temp_Ruecklauf = sensors.getTempC(temperatur_Ruecklauf);
+            if (temp_Vorlauf == DEVICE_DISCONNECTED_C)
+            {
+              Serial.println("Error: Could not read Vorlauf temperature data");
+            }
+
+            if (temp_Ruecklauf == DEVICE_DISCONNECTED_C)
+            {
+              Serial.println("Error: Could not read Ruecklauf temperature data");
+            }
+
+            Serial.print("Vorlauftemperatur C: ");
+            Serial.print(temp_Vorlauf);
+            Serial.print("Ruecklauftemperatur C: ");
+            Serial.print(temp_Ruecklauf);
+
+            // float
+            // bool res = NVS.setInt("GMC", count, true);
+
+            // calculate something
+
+            // TODO: check how this is
+            current_meter_Reading = current_meter_Reading + 1.0;
+            ThingPropertyValue temp_new_value;
+            temp_new_value.number = current_meter_Reading;
+            prop_Gas->setValue(temp_new_value);
+            prop_Gas->hasChanged();
+          }
+        }
       }
     }
 
@@ -728,27 +765,31 @@ void UpdateMeterTask(void *pvParameters)
 
       if (res == pdTRUE) // counted up
       {
-        pcnt_get_counter_value(PCNT_UNIT_0, &count);
+        if (event.status & PCNT_EVT_H_LIM)
+        {
+          if (counter_value == 0)
+          {
+            Serial.println("First impulse detected doesnt count");
+            time(&time_last_impulse);
+          }
+          else
+          {
+            Serial.println("Impulse detected");
+            counter_value = counter_value + 1;
+            Serial.println(counter_value);
+            time_t time_current_impulse;
+            time(&time_current_impulse);
+            long time_diff = (long)time_current_impulse - (long)time_last_impulse;
+            Serial.printf("time_diff = %ld", time_diff);
+            current_meter_Reading = current_meter_Reading + 1.0;
+            Serial.println(current_meter_Reading);
 
-        Serial.printf("Event PCNT unit[%d]; cnt: %d", event.unit, count);
-
-        // save counter value in NVS
-        // bool res = NVS.setInt("WMC", count, true);
-
-        // calculate something
-
-        // TODO: check how this is
-        current_meter_Reading = current_meter_Reading + 1.0;
-        Serial.println(current_meter_Reading);
-
-        ThingPropertyValue temp_new_value;
-        temp_new_value.number = current_meter_Reading;
-        prop_Wasser->setValue(temp_new_value);
-        prop_Wasser->hasChanged();
-      }
-      else // for debug
-      {
-        pcnt_get_counter_value(PCNT_UNIT_0, &count);
+            ThingPropertyValue temp_new_value;
+            temp_new_value.number = current_meter_Reading;
+            prop_Wasser->setValue(temp_new_value);
+            prop_Wasser->hasChanged();
+          }
+        }
       }
     }
 
@@ -767,43 +808,7 @@ void OneWireTask(void *pvParameters)
     // Serial.println("ºC");
     // Serial.print(temperatureF);
     // Serial.println("ºF");
-    Serial.print("Requesting temperatures...");
-    sensors.requestTemperatures();
-    Serial.println("DONE");
 
-    // print the device information
-    printData(insideThermometer);
-    printData(outsideThermometer);
-
-    vTaskDelay(pdMS_TO_TICKS(3000));
+    // vTaskDelay(pdMS_TO_TICKS(3000));
   }
 }
-
-// function to print a device address
-
-// void reconnect()
-// {
-//   Serial.print("Attempting MQTT connection...");
-
-//   // Loop until we're reconnected
-//   while (!MQTT_Client.connected())
-//   {
-//     int retries = 0;
-
-//     if (retries < 5)
-//     {
-
-//       if (mqtt_needs_Auth)
-//       {
-//         connected_tobroker = MQTT_Client.connect(, mqttauth_Username.c_str(), mqttauth_Password.c_str(), lwt_Topic.c_str(), 1, true, lwt_message.c_str());
-//       }
-//       else
-//       {
-//         connected_tobroker = MQTT_Client.connect(device_ID, lwt_Topic.c_str(), 1, true, lwt_message.c_str());
-//       }
-
-//       Serial.println("Retries exceeded, restarting device");
-//       ESP.restart();
-//     }
-//   }
-// }
