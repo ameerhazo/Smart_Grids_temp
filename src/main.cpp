@@ -52,11 +52,16 @@ const int oneWireBus = 25;
 OneWire oneWire(oneWireBus); // on pin 10 (a 4.7K resistor is necessary)
 DallasTemperature sensors(&oneWire);
 
-DeviceAddress temperatur_Vorlauf, temperatur_Ruecklauf;
+DeviceAddress temperatur_Vorlauf = {0x28, 0x4B, 0xC7, 0x9A, 0x0A, 0x00, 0x00, 0x70};
+DeviceAddress temperatur_Ruecklauf = {0x28, 0x9F, 0x4E, 0x9A, 0x0A, 0x0, 0x0, 0x50};
 
 void OneWireTask(void *pvParameters);
 
 void UpdateMeterTask(void *pvParameters);
+
+// test ID
+const char *ssid = "IKT-A512-RT03-2G";
+const char *password = "00691779381297575655";
 
 // boolean to check for connected to broker
 bool connected_tobroker = false;
@@ -178,24 +183,19 @@ void configure_temperature_sensors(void)
   Serial.print(sensors.getDeviceCount(), DEC);
   Serial.println(" devices.");
 
-  if (!sensors.getAddress(temperatur_Vorlauf, 0))
-    Serial.println("Unable to find address for Device 0");
-  if (!sensors.getAddress(temperatur_Ruecklauf, 1))
-    Serial.println("Unable to find address for Device 1");
+  bool vorlaufT_Present = sensors.validAddress(temperatur_Vorlauf);
+  bool ruecklaufT_Present = sensors.validAddress(temperatur_Ruecklauf);
+
+  if (!vorlaufT_Present || !ruecklaufT_Present)
+  {
+    Serial.println("One of the sensor not found");
+  }
 
   Serial.print("Parasite power is: ");
   if (sensors.isParasitePowerMode())
     Serial.println("ON");
   else
     Serial.println("OFF");
-
-  Serial.print("Device 0 Address: ");
-  printAddress(temperatur_Vorlauf);
-  Serial.println();
-
-  Serial.print("Device 1 Address: ");
-  printAddress(temperatur_Ruecklauf);
-  Serial.println();
 
   // set the resolution to 9 bit per device
   sensors.setResolution(temperatur_Vorlauf, TEMPERATURE_PRECISION);
@@ -404,151 +404,167 @@ void setup()
   delay(2000);
 
   configure_LED();
-  // start SPIFFS
-  SPIFFS.begin(true);
-  // initialize NVS flash
-  // NVS.begin();
 
   // test functions
   // configure_temperature_sensors();
 
   // configure_impulse_pin();
+  // start SPIFFS
+  // SPIFFS.begin(true);
+  // initialize NVS flash
+  // NVS.begin();
 
-  M5.Lcd.fillScreen(BLACK);
-  M5.Lcd.setCursor(0, 55);
-  M5.Lcd.printf("counter: %d", counter_value);
+  Serial.print("Connecting : ");
+  WiFi.begin(ssid, password);
 
-  WiFiSettings.onWaitLoop = []()
+  while (WiFi.status() != WL_CONNECTED)
   {
-    bool led_Status = digitalRead(red_LED);
-    digitalWrite(red_LED, !led_Status);
-    return 500;
-  };
-
-  WiFiSettings.onFailure = []()
-  {
-    on_Failure();
-  };
-
-  WiFiSettings.onPortal = []()
-  {
-    M5.Lcd.fillScreen(BLACK);
     delay(500);
-    M5.Lcd.setCursor(0, 55);
-    M5.Lcd.printf("PORTAL CONFIG");
-  };
-
-  WiFiSettings.onRestart = []()
-  {
-    M5.Lcd.fillScreen(BLACK);
-    delay(500);
-    M5.Lcd.setCursor(0, 55);
-    M5.Lcd.printf("RESTARTING...");
-    delay(500);
-  };
-
-  bool use_custom_name_Dummy = false;
-  String custom_device_ID_Dummy;
-
-  if (device_Name == "")
-  {
-    // use default name
-    WiFiSettings.hostname = device_ID;
-    WiFiSettings.heading("Sensor ID:");
-    WiFiSettings.heading(device_ID);
-    bool use_custom_name_dummy = WiFiSettings.checkbox("Use custom device name", false);
-    custom_device_ID_Dummy = WiFiSettings.string("Custom device name", "device_name001");
-  }
-  else
-  {
-    WiFiSettings.hostname = device_Name;
-    WiFiSettings.heading("Sensor ID:");
-    WiFiSettings.heading(device_Name);
-    use_custom_name_Dummy = WiFiSettings.checkbox("Use custom device name", true);
-    String device_ID_dummy = WiFiSettings.string("Custom device name", "device_name001");
+    Serial.print(".");
   }
 
-  WiFiSettings.heading("CoAP Configuration");
-  bool dev_uses_CoAP_dummy = WiFiSettings.checkbox("Send data via CoAP");
+  configTime(7200, 0, ntpServer);
 
-  WiFiSettings.heading("MQTT Configuration");
-  bool dev_uses_MQTT_dummy = WiFiSettings.checkbox("Send data via MQTT");
-  String mqtt_brokeraddress_dummy = WiFiSettings.string("MQTT broker address", "mqtt.eclipse.org");
-  bool checkbox_mqtt_auth_dummy = WiFiSettings.checkbox("MQTT broker authentification", false);
-  String mqtt_brokerauth_user = WiFiSettings.string("MQTT Broker Username", "username");
-  String mqtt_brokerauth_pass = WiFiSettings.string("MQTT Broker Password", "password");
+  // // test functions
+  // configure_temperature_sensors();
 
-  WiFiSettings.heading("Device mode");
-  bool checkbox_Gas_dummy = WiFiSettings.checkbox("Gas", false);
-  bool checkbox_Strom_dummy = WiFiSettings.checkbox("Electricity", false);
-  bool checkbox_Wasser_dummy = WiFiSettings.checkbox("Water", false);
-  String meter_Number = WiFiSettings.string("Meter ID", "Meter-001");
+  // configure_impulse_pin();
 
-  WiFiSettings.heading("Meter Configuration");
-  // String meter_Number = WiFiSettings.string("Meter number", "Gas_Meter-001");
-  String meter_Reading = WiFiSettings.string("Meter reading", "12345.000");
+  // M5.Lcd.fillScreen(BLACK);
+  // M5.Lcd.setCursor(0, 55);
+  // M5.Lcd.printf("counter: %d", counter_value);
+
+  // WiFiSettings.onWaitLoop = []()
+  // {
+  //   bool led_Status = digitalRead(red_LED);
+  //   digitalWrite(red_LED, !led_Status);
+  //   return 500;
+  // };
+
+  // WiFiSettings.onFailure = []()
+  // {
+  //   on_Failure();
+  // };
+
+  // WiFiSettings.onPortal = []()
+  // {
+  //   M5.Lcd.fillScreen(BLACK);
+  //   delay(500);
+  //   M5.Lcd.setCursor(0, 55);
+  //   M5.Lcd.printf("PORTAL CONFIG");
+  // };
+
+  // WiFiSettings.onRestart = []()
+  // {
+  //   M5.Lcd.fillScreen(BLACK);
+  //   delay(500);
+  //   M5.Lcd.setCursor(0, 55);
+  //   M5.Lcd.printf("RESTARTING...");
+  //   delay(500);
+  // };
+
+  // bool use_custom_name_Dummy = false;
+  // String custom_device_ID_Dummy;
+
+  // if (device_Name == "")
+  // {
+  //   // use default name
+  //   WiFiSettings.hostname = device_ID;
+  //   WiFiSettings.heading("Sensor ID:");
+  //   WiFiSettings.heading(device_ID);
+  //   bool use_custom_name_dummy = WiFiSettings.checkbox("Use custom device name", false);
+  //   custom_device_ID_Dummy = WiFiSettings.string("Custom device name", "device_name001");
+  // }
+  // else
+  // {
+  //   WiFiSettings.hostname = device_Name;
+  //   WiFiSettings.heading("Sensor ID:");
+  //   WiFiSettings.heading(device_Name);
+  //   use_custom_name_Dummy = WiFiSettings.checkbox("Use custom device name", true);
+  //   String device_ID_dummy = WiFiSettings.string("Custom device name", "device_name001");
+  // }
+
+  // WiFiSettings.heading("CoAP Configuration");
+  // bool dev_uses_CoAP_dummy = WiFiSettings.checkbox("Send data via CoAP");
+
+  // WiFiSettings.heading("MQTT Configuration");
+  // bool dev_uses_MQTT_dummy = WiFiSettings.checkbox("Send data via MQTT");
+  // String mqtt_brokeraddress_dummy = WiFiSettings.string("MQTT broker address", "mqtt.eclipse.org");
+  // bool checkbox_mqtt_auth_dummy = WiFiSettings.checkbox("MQTT broker authentification", false);
+  // String mqtt_brokerauth_user = WiFiSettings.string("MQTT Broker Username", "username");
+  // String mqtt_brokerauth_pass = WiFiSettings.string("MQTT Broker Password", "password");
+
+  // WiFiSettings.heading("Device mode");
+  // bool checkbox_Gas_dummy = WiFiSettings.checkbox("Gas", false);
+  // bool checkbox_Strom_dummy = WiFiSettings.checkbox("Electricity", false);
+  // bool checkbox_Wasser_dummy = WiFiSettings.checkbox("Water", false);
+  // String meter_Number = WiFiSettings.string("Meter ID", "Meter-001");
 
   // WiFiSettings.heading("Meter Configuration");
-  // // String meter_Number = WiFiSettings.string("Meter number", "Electricity_Meter-001");
-  // String meter_Reading = WiFiSettings.string("Meter reading", "12345.000");
-
-  // WiFiSettings.heading("Configuration");
   // // String meter_Number = WiFiSettings.string("Meter number", "Gas_Meter-001");
   // String meter_Reading = WiFiSettings.string("Meter reading", "12345.000");
 
-  // reset connection counter
-  connection_counter = 0;
+  // // WiFiSettings.heading("Meter Configuration");
+  // // // String meter_Number = WiFiSettings.string("Meter number", "Electricity_Meter-001");
+  // // String meter_Reading = WiFiSettings.string("Meter reading", "12345.000");
 
-  M5.Lcd.fillScreen(BLACK);
-  M5.Lcd.setCursor(0, 55);
-  M5.Lcd.printf("CONNECTING...");
+  // // WiFiSettings.heading("Configuration");
+  // // // String meter_Number = WiFiSettings.string("Meter number", "Gas_Meter-001");
+  // // String meter_Reading = WiFiSettings.string("Meter reading", "12345.000");
 
-  // try to connect to WiFi with a timeout of 30 seconds - launch portal if connection fails
-  WiFiSettings.connect(true, 30);
+  // // reset connection counter
+  // connection_counter = 0;
 
-  M5.Lcd.fillScreen(BLACK);
-  M5.Lcd.setCursor(0, 55);
-  M5.Lcd.println("CONNECTED");
-  delay(1000);
+  // M5.Lcd.fillScreen(BLACK);
+  // M5.Lcd.setCursor(0, 55);
+  // M5.Lcd.printf("CONNECTING...");
 
-  // finished WiFi connection process
-  // set variables for configuration
-  use_custom_Name = use_custom_name_Dummy;
-  device_Name = custom_device_ID_Dummy;
-  mqttbroker_Address = mqtt_brokeraddress_dummy;
-  mqtt_needs_Auth = checkbox_mqtt_auth_dummy;
-  mqttauth_Username = mqtt_brokerauth_user;
-  mqttauth_Password = mqtt_brokerauth_pass;
-  checkbox_Gas = checkbox_Gas_dummy;
-  checkbox_Strom = checkbox_Strom_dummy;
-  checkbox_Wasser = checkbox_Wasser_dummy;
-  current_meter_Reading = meter_Reading.toDouble();
+  // // try to connect to WiFi with a timeout of 30 seconds - launch portal if connection fails
+  // WiFiSettings.connect(true, 30);
 
-  Serial.println(current_meter_Reading);
+  // M5.Lcd.fillScreen(BLACK);
+  // M5.Lcd.setCursor(0, 55);
+  // M5.Lcd.println("CONNECTED");
+  // delay(1000);
 
-  if (use_custom_Name)
-  {
-    if (custom_device_ID_Dummy != "")
-    {
-      device_Name = custom_device_ID_Dummy;
-      WiFiSettings.hostname = device_Name;
-    }
-  }
-  else
-  {
-    device_Name = "";
-  }
+  // // finished WiFi connection process
+  // // set variables for configuration
+  // use_custom_Name = use_custom_name_Dummy;
+  // device_Name = custom_device_ID_Dummy;
+  // mqttbroker_Address = mqtt_brokeraddress_dummy;
+  // mqtt_needs_Auth = checkbox_mqtt_auth_dummy;
+  // mqttauth_Username = mqtt_brokerauth_user;
+  // mqttauth_Password = mqtt_brokerauth_pass;
+  // checkbox_Gas = checkbox_Gas_dummy;
+  // checkbox_Strom = checkbox_Strom_dummy;
+  // checkbox_Wasser = checkbox_Wasser_dummy;
+  // current_meter_Reading = meter_Reading.toDouble();
 
-  M5.Lcd.fillScreen(BLACK);
-  M5.Lcd.setCursor(0, 20);
-  M5.Lcd.println("TIME SYNC");
-  delay(1000);
+  // Serial.println(current_meter_Reading);
 
-  configTime(3600, 0, ntpServer);
+  // if (use_custom_Name)
+  // {
+  //   if (custom_device_ID_Dummy != "")
+  //   {
+  //     device_Name = custom_device_ID_Dummy;
+  //     WiFiSettings.hostname = device_Name;
+  //   }
+  // }
+  // else
+  // {
+  //   device_Name = "";
+  // }
 
-  M5.Lcd.setCursor(0, 55);
-  M5.Lcd.println("SUCCESS");
-  delay(1000);
+  // M5.Lcd.fillScreen(BLACK);
+  // M5.Lcd.setCursor(0, 20);
+  // M5.Lcd.println("TIME SYNC");
+  // delay(1000);
+
+  // configTime(3600, 0, ntpServer);
+
+  // M5.Lcd.setCursor(0, 55);
+  // M5.Lcd.println("SUCCESS");
+  // delay(1000);
 
   if (dev_uses_MQTT)
   {
@@ -565,56 +581,56 @@ void setup()
     if (mqtt_needs_Auth)
     {
       Serial.println("MQTT Broker needs authentication");
-      mqttAdapter->setmqttbroker_Credentials(mqtt_brokerauth_user.c_str(), mqtt_brokerauth_pass.c_str());
+      mqttAdapter->setmqttbroker_Credentials(mqttauth_Username, mqttauth_Password);
     }
   }
 
-  M5.Lcd.fillScreen(WHITE);
-  delay(500);
-  M5.Lcd.fillScreen(RED);
-  delay(500);
-  M5.Lcd.fillScreen(GREEN);
-  delay(500);
-  M5.Lcd.fillScreen(BLUE);
-  delay(500);
-  M5.Lcd.fillScreen(BLACK);
-  delay(500);
-  M5.Lcd.setCursor(0, 55);
-  // String IP_String = WiFi.localIP().toString();
-  // M5.Lcd.printf("%s", IP_String.c_str());
-  M5.Lcd.printf("RUNNING");
+  // M5.Lcd.fillScreen(WHITE);
+  // delay(500);
+  // M5.Lcd.fillScreen(RED);
+  // delay(500);
+  // M5.Lcd.fillScreen(GREEN);
+  // delay(500);
+  // M5.Lcd.fillScreen(BLUE);
+  // delay(500);
+  // M5.Lcd.fillScreen(BLACK);
+  // delay(500);
+  // M5.Lcd.setCursor(0, 55);
+  // // String IP_String = WiFi.localIP().toString();
+  // // M5.Lcd.printf("%s", IP_String.c_str());
+  // M5.Lcd.printf("RUNNING");
 
   const char *multisensorProperties[] = {"Smart_Meter", nullptr};
 
-  if (use_custom_Name)
-  {
-    multisensor = new ThingDevice(device_Name.c_str(), "SmartMeter_Thing", multisensorProperties);
-  }
-  else
-  {
-    multisensor = new ThingDevice(device_ID, "SmartMeter_Thing", multisensorProperties);
-  }
-
-  // if (checkbox_Waerme)
+  // if (use_custom_Name)
   // {
-  //   configure_impulse_pin();
-  //  prop_Gas = new ThingProperty("Gas", "Gas usage measurement", NUMBER, nullptr, nullptr, nullptr);
-  //  multisensor->addProperty(prop_Gas);
+  //   multisensor = new ThingDevice(device_Name.c_str(), "SmartMeter_Thing", multisensorProperties);
   // }
+  // else
+  // {
+  multisensor = new ThingDevice(device_ID, "SmartMeter_Thing", multisensorProperties);
+  // }
+
+  // // if (checkbox_Waerme)
+  // // {
+  // //   configure_impulse_pin();
+  // //  prop_Gas = new ThingProperty("Gas", "Gas usage measurement", NUMBER, nullptr, nullptr, nullptr);
+  // //  multisensor->addProperty(prop_Gas);
+  // // }
 
   if (checkbox_Gas)
   {
     configure_temperature_sensors();
-
+    configure_impulse_pin();
     prop_Gas = new ThingProperty("Gas", "Gas usage measurement", NUMBER, nullptr, nullptr, nullptr);
     multisensor->addProperty(prop_Gas);
   }
 
-  if (checkbox_Strom) // add SML here maybe?
-  {
-    prop_Strom = new ThingProperty("Electricity", "Electricity usage measurement", NUMBER, nullptr, nullptr, nullptr);
-    multisensor->addProperty(prop_Strom);
-  }
+  // if (checkbox_Strom) // add SML here maybe?
+  // {
+  //   prop_Strom = new ThingProperty("Electricity", "Electricity usage measurement", NUMBER, nullptr, nullptr, nullptr);
+  //   multisensor->addProperty(prop_Strom);
+  // }
 
   if (checkbox_Wasser)
   {
@@ -627,37 +643,37 @@ void setup()
   mqttAdapter->begin();
   // start update-functionality
 
-  delay(2000);
+  // delay(2000);
 
-  if (checkbox_Gas)
-  {
-    // start temperature sensor task
-    // xTaskCreatePinnedToCore(OneWireTask, "OneWireTask", 8000, NULL, 5, NULL, 1);
-    xTaskCreatePinnedToCore(UpdateMeterTask, "UpdateMeterTask", 8000, NULL, 5, NULL, 1);
-  }
+  // if (checkbox_Gas)
+  // {
+  //   // start temperature sensor task
+  //   // xTaskCreatePinnedToCore(OneWireTask, "OneWireTask", 8000, NULL, 5, NULL, 1);
+  //   xTaskCreatePinnedToCore(UpdateMeterTask, "UpdateMeterTask", 8000, NULL, 5, NULL, 1);
+  // }
 
-  if (checkbox_Wasser)
-  {
-    // start some task for water
-    xTaskCreatePinnedToCore(UpdateMeterTask, "UpdateMeterTask", 8000, NULL, 5, NULL, 1);
-  }
+  // if (checkbox_Wasser)
+  // {
+  //   // start some task for water
+  //   xTaskCreatePinnedToCore(UpdateMeterTask, "UpdateMeterTask", 8000, NULL, 5, NULL, 1);
+  // }
 
-  if (checkbox_Strom)
-  {
-    // start some task for electricity
-  }
+  // if (checkbox_Strom)
+  // {
+  //   // start some task for electricity
+  // }
 
-  AsyncElegantOTA.begin(&server);
-  server.begin();
+  // AsyncElegantOTA.begin(&server);
+  // server.begin();
 }
 
 void loop()
 {
   // // perform background tasks for the communication using MQTT
-  M5.update();
-  test_button_press();
-  connected_AP();
-  AsyncElegantOTA.loop();
+  // M5.update();
+  // test_button_press();
+  // connected_AP();
+  // AsyncElegantOTA.loop();
 
   // Serial.print("Requesting temperatures...");
   // sensors.requestTemperatures();
@@ -679,7 +695,163 @@ void loop()
   // Serial.print(temp_Vorlauf);
   // Serial.print("Ruecklauftemperatur C: ");
   // Serial.print(temp_Ruecklauf);
+
+  if (checkbox_Gas) // Wärme
+  {
+    int16_t count = 0;
+    pcnt_evt_t event;
+    portBASE_TYPE res;
+    long time_delta;
+    res = xQueueReceive(pcnt_evt_queue, &event, pdMS_TO_TICKS(1000));
+
+    if (res == pdTRUE)
+    {
+      if (event.status & PCNT_EVT_H_LIM)
+      {
+        Serial.println("Impulse detected, 100L water used");
+        if (first_impulse)
+        {
+          first_impulse = false;
+          Serial.println("First impulse detected doesnt count");
+          time(&time_last_impulse);
+        }
+        else
+        {
+          counter_value = counter_value + 1;
+          Serial.println(counter_value);
+          // save counter value in NVS
+          // bool res = NVS.setInt("GMC", count, true);
+
+          // calculate the time difference between impulses
+          time_t time_current_impulse;
+          time(&time_current_impulse);
+
+          time_delta = (long)time_current_impulse - long(time_last_impulse);
+
+          Serial.printf("time_delta: %ld", time_delta);
+
+          time_last_impulse = time_current_impulse;
+
+          // get the temperature
+          Serial.print("Requesting temperatures...");
+          sensors.requestTemperatures();
+          Serial.println("DONE");
+
+          float temp_Vorlauf = sensors.getTempC(temperatur_Vorlauf);
+          float temp_Ruecklauf = sensors.getTempC(temperatur_Ruecklauf);
+
+          Serial.print("Vorlauftemperatur C: ");
+          Serial.println(temp_Vorlauf);
+          Serial.print("Ruecklauftemperatur C: ");
+          Serial.println(temp_Ruecklauf);
+
+          if (temp_Vorlauf == DEVICE_DISCONNECTED_C)
+          {
+            Serial.println("Error: Could not read Vorlauf temperature data");
+            return;
+          }
+
+          if (temp_Ruecklauf == DEVICE_DISCONNECTED_C)
+          {
+            Serial.println("Error: Could not read Ruecklauf temperature data");
+            return;
+          }
+
+          // calculate the Wärmeleistung
+          float temp_Differenz = (temp_Vorlauf - temp_Ruecklauf );
+          Serial.printf("temp_Differenz: %.2f", temp_Differenz);
+          float Waermeleistung = temp_Differenz * WAERMEKAPAZITAET_WASSER_W * (time_delta / 3600) * 0.001;
+          Serial.printf("WaermeL: %.2f", Waermeleistung);
+          float Waermemenge = Waermeleistung * (time_delta / 3600);
+          // TODO: check how this is
+          // current_meter_Reading = current_meter_Reading + 1.0;
+          ThingPropertyValue temp_new_value;
+          temp_new_value.number = Waermeleistung;
+          prop_Gas->setValue(temp_new_value);
+          prop_Gas->hasChanged();
+        }
+      }
+    }
+  }
+
+  if (checkbox_Strom) // TODO: add SML here maybe?
+  {
+  }
+
+  if (checkbox_Wasser)
+  {
+    int16_t count = 0;
+    pcnt_evt_t event;
+    portBASE_TYPE res;
+    res = xQueueReceive(pcnt_evt_queue, &event, pdMS_TO_TICKS(1000));
+
+    if (res == pdTRUE) // counted up
+    {
+      if (event.status & PCNT_EVT_H_LIM)
+      {
+        if (first_impulse)
+        {
+          first_impulse = false;
+          Serial.println("First impulse detected doesnt count");
+          time(&time_last_impulse);
+        }
+        else
+        {
+          Serial.println("Impulse detected");
+          counter_value = counter_value + 1;
+          Serial.println(counter_value);
+          time_t time_current_impulse;
+          time(&time_current_impulse);
+          long time_diff = (long)time_current_impulse - (long)time_last_impulse;
+          time_last_impulse = time_current_impulse;
+
+          Serial.printf("time_diff = %ld", time_diff);
+          current_meter_Reading = current_meter_Reading + 0.001;
+          Serial.println(current_meter_Reading);
+
+          ThingPropertyValue temp_new_value;
+          temp_new_value.number = current_meter_Reading;
+          prop_Wasser->setValue(temp_new_value);
+          prop_Wasser->hasChanged();
+        }
+      }
+    }
+  }
+
+  // delay(1000);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 void UpdateMeterTask(void *pvParameters)
 {
@@ -708,6 +880,7 @@ void UpdateMeterTask(void *pvParameters)
             counter_value = counter_value + 1;
 
             // save counter value in NVS
+            // bool res = NVS.setInt("GMC", count, true);
 
             // calculate the time difference between impulses
             time_t time_current_impulse;
@@ -715,31 +888,35 @@ void UpdateMeterTask(void *pvParameters)
 
             time_delta = (long)time_current_impulse - long(time_last_impulse);
 
+            // get the temperature
             Serial.print("Requesting temperatures...");
             sensors.requestTemperatures();
             Serial.println("DONE");
 
             float temp_Vorlauf = sensors.getTempC(temperatur_Vorlauf);
             float temp_Ruecklauf = sensors.getTempC(temperatur_Ruecklauf);
-            if (temp_Vorlauf == DEVICE_DISCONNECTED_C)
-            {
-              Serial.println("Error: Could not read Vorlauf temperature data");
-            }
-
-            if (temp_Ruecklauf == DEVICE_DISCONNECTED_C)
-            {
-              Serial.println("Error: Could not read Ruecklauf temperature data");
-            }
 
             Serial.print("Vorlauftemperatur C: ");
             Serial.print(temp_Vorlauf);
             Serial.print("Ruecklauftemperatur C: ");
             Serial.print(temp_Ruecklauf);
 
-            // float
-            // bool res = NVS.setInt("GMC", count, true);
+            if (temp_Vorlauf == DEVICE_DISCONNECTED_C)
+            {
+              Serial.println("Error: Could not read Vorlauf temperature data");
+              return;
+            }
 
-            // calculate something
+            if (temp_Ruecklauf == DEVICE_DISCONNECTED_C)
+            {
+              Serial.println("Error: Could not read Ruecklauf temperature data");
+              return;
+            }
+
+            // calculate the Wärmeleistung
+            float temp_Differenz = (temp_Vorlauf - temp_Ruecklauf + 273.15);
+            float Waermeleistung = temp_Differenz * WAERMEKAPAZITAET_WASSER_W * (time_delta / 3600) * 0.001;
+            float Waermemenge = Waermeleistung * (time_delta / 3600);
 
             // TODO: check how this is
             current_meter_Reading = current_meter_Reading + 1.0;
